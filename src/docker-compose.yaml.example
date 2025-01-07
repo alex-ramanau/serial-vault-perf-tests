@@ -1,0 +1,88 @@
+version: '3.8'
+
+services:
+  serial-vault-db:
+    container_name: serial-vault-db
+    image: 'postgres:12.18'
+    shm_size: 1g
+    privileged: true
+    environment:
+      - POSTGRES_DB=serial_vault_db
+      - POSTGRES_USER=serial_vault_user
+      - POSTGRES_PASSWORD=serial_vault_password
+      - POSTGRES_HOST=localhost
+      - POSTGRES_PORT=5432
+    ports:
+      - '5432:5432'
+    volumes:
+      - 'db_data:/var/lib/postgresql/data'
+
+  locust:
+    container_name: locust
+    image: locust
+    entrypoint: []
+    command: ['locust', '-f', 'serial_vault_locustfile.py']
+    working_dir: /perf_tests
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.locust
+    environment:
+      - API_KEY=pTemla66wSwZ93cizo7HcpbB3vigO7TrtqhIN4YfOLmR8UEPw
+    ports:
+      - '8089:8089'
+
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    ports:
+      - 9090:9090
+    restart: unless-stopped
+    volumes:
+      - ./docker/prometheus:/etc/prometheus
+      - prom_data:/prometheus
+  node-exporter:
+    image: prom/node-exporter
+    container_name: node-exporter
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    ports:
+      - '9100:9100'
+    restart: unless-stopped
+  grafana:
+    image: grafana/grafana-oss:9.5.16
+    container_name: grafana
+    ports:
+      - 3000:3000
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=grafana
+    volumes:
+      - ./docker/grafana:/etc/grafana/provisioning/datasources
+      - grafana_data:/var/lib/grafana
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0
+    restart: always
+    environment:
+      - DATA_SOURCE_URI=serial-vault-db:5432/postgres?sslmode=disable
+      - DATA_SOURCE_USER=serial_vault_user
+      - DATA_SOURCE_PASS=serial_vault_password
+    ports:
+      - "9187:9187"
+    depends_on:
+      - serial-vault-db
+
+
+volumes:
+  db_data:
+  prom_data:
+  grafana_data:
